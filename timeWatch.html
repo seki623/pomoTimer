@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>ポモドーロタイマー（作業＆休憩対応）</title>
+    <style>
+        body {
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            text-align: center;
+            background-color: #faf6f6;
+            color: #5a4a4a;
+            padding: 50px;
+        }
+        .mode-container {
+            margin-bottom: 20px;
+        }
+        .mode-btn {
+            font-size: 1rem;
+            padding: 8px 25px;
+            margin: 0 5px;
+            border: 2px solid #e8b4b4;
+            background-color: white;
+            color: #e8b4b4;
+            border-radius: 20px;
+            font-weight: bold;
+        }
+        .mode-btn.active {
+            background-color: #e8b4b4;
+            color: white;
+        }
+        .timer-display {
+            font-size: 5rem;
+            font-weight: bold;
+            margin: 15px 0;
+            color: #d17a7a;
+        }
+        .control-btn {
+            font-size: 1rem;
+            padding: 10px 20px;
+            margin: 5px;
+            border: none;
+            border-radius: 20px;
+            background-color: #ba9494;
+            color: white;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+        .control-btn:hover {
+            background-color: #a37d7d;
+        }
+        #startBtn {
+            background-color: #d17a7a;
+        }
+        #startBtn:hover {
+            background-color: #b86363;
+        }
+        #startBtn:disabled, .control-btn:disabled {
+            background-color: #ebdcdc;
+            cursor: not-allowed;
+        }
+        .memo-area {
+            margin: 20px 0;
+        }
+        input[type="text"] {
+            font-size: 1rem;
+            padding: 8px 15px;
+            width: 280px;
+            border: 1px solid #e8b4b4;
+            border-radius: 15px;
+            outline: none;
+            color: #5a4a4a;
+        }
+        .log-container {
+            margin-top: 40px;
+            text-align: left;
+            max-width: 500px;
+            margin-left: auto;
+            margin-right: auto;
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+        }
+        .log-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 2px solid #e8b4b4;
+            padding-bottom: 10px;
+        }
+        .log-header h3 { margin: 0; }
+        .clear-btn {
+            font-size: 0.8rem;
+            padding: 5px 12px;
+            background-color: #ba9494;
+            border: none;
+            border-radius: 15px;
+            color: white;
+            cursor: pointer;
+        }
+        ul {
+            list-style-type: none;
+            padding: 0;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        li {
+            padding: 10px 0;
+            border-bottom: 1px dashed #e8b4b4;
+            font-size: 0.95rem;
+            line-height: 1.4;
+        }
+        .memo-text {
+            display: block;
+            color: #8c7373;
+            font-size: 0.85rem;
+            margin-top: 3px;
+            padding-left: 10px;
+            border-left: 2px solid #e8b4b4;
+        }
+        .badge {
+            display: inline-block;
+            padding: 2px 6px;
+            font-size: 0.75rem;
+            border-radius: 4px;
+            margin-right: 5px;
+            color: white;
+        }
+        .badge-work { background-color: #d17a7a; }
+        .badge-break { background-color: #7ab8d1; }
+    </style>
+</head>
+<body>
+
+    <h2>ポモドーロタイマー</h2>
+    
+    <!-- モード切り替えボタン -->
+    <div class="mode-container">
+        <button id="workModeBtn" class="mode-btn active" onclick="setMode('work')">作業 (25分)</button>
+        <button id="breakModeBtn" class="mode-btn" onclick="setMode('break')">休憩 (5分)</button>
+    </div>
+
+    <!-- タイマー表示エリア -->
+    <div class="timer-display" id="display">25:00</div>
+    
+    <!-- メモ入力エリア -->
+    <div class="memo-area">
+        <input type="text" id="memoInput" placeholder="これからの作業メモ（例：読書、勉強など）">
+    </div>
+
+    <!-- 操作ボタン -->
+    <button id="startBtn" class="control-btn" onclick="startTimer()">スタート</button>
+    <button id="stopBtn" class="control-btn" onclick="stopTimer()" disabled>ストップ</button>
+    <button class="control-btn" onclick="resetTimer()">リセット</button>
+
+    <!-- 履歴の記録エリア -->
+    <div class="log-container">
+        <div class="log-header">
+            <h3>活動の記録</h3>
+            <button class="clear-btn" onclick="clearAllLogs()">記録をすべて消去</button>
+        </div>
+        <ul id="logList"></ul>
+    </div>
+
+    <script>
+        let timer;
+        let currentMode = 'work'; // 'work' または 'break'
+        let timeLeft = 25 * 60;
+	//let timeLeft = 10;
+        let isRunning = false;
+        let startTimeStr = "";
+
+	const finishSound = new Audio('https://actions.google.com/sounds/v1/alarms/digital_watch_alarm_long.ogg');
+        const display = document.getElementById('display');
+        const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const logList = document.getElementById('logList');
+        const memoInput = document.getElementById('memoInput');
+        const workModeBtn = document.getElementById('workModeBtn');
+        const breakModeBtn = document.getElementById('breakModeBtn');
+
+        window.onload = function() {
+            loadLogs();
+        };
+
+        // モードを切り替える関数
+        function setMode(mode) {
+            if (isRunning) {
+                alert("タイマー作動中はモードを変更できませんわ。一度ストップかリセットをしてくださいね。");
+                return;
+            }
+            currentMode = mode;
+            if (mode === 'work') {
+                timeLeft = 25 * 60;
+                workModeBtn.classList.add('active');
+                breakModeBtn.classList.remove('active');
+                memoInput.placeholder = "これからの作業メモ（例：読書、勉強など）";
+            } else {
+                timeLeft = 5 * 60;
+		//timeLeft = 10;
+                workModeBtn.classList.remove('active');
+                breakModeBtn.classList.add('active');
+                memoInput.placeholder = "休憩の過ごし方メモ（例：ストレッチ、お茶など）";
+            }
+            display.textContent = formatTime(timeLeft);
+        }
+
+        function formatTime(seconds) {
+            const mins = Math.floor(seconds / 60).toString().padStart(2, '0');
+            const secs = (seconds % 60).toString().padStart(2, '0');
+            return `${mins}:${secs}`;
+        }
+
+        function getCurrentTimeStr() {
+            const now = new Date();
+            const dateStr = `${now.getMonth() + 1}/${now.getDate()}`;
+            const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            return `${dateStr} ${timeStr}`;
+        }
+
+        function updateTimer() {
+            if (timeLeft > 0) {
+                timeLeft--;
+                display.textContent = formatTime(timeLeft);
+            } else {
+                clearInterval(timer);
+                isRunning = false;
+                const endTimeStr = getCurrentTimeStr();
+                
+                const modeLabel = currentMode === 'work' ? '作業' : '休憩';
+                saveLog(startTimeStr, endTimeStr, "完了", memoInput.value, currentMode);
+                
+		// 🎵 タイマーが回り切ったので、音を鳴らします
+        	finishSound.play();
+
+                alert(`${modeLabel}時間が終了いたしました。素晴らしいですね。`);
+                memoInput.value = "";
+                resetTimer();
+            }
+        }
+
+        function startTimer() {
+            if (!isRunning) {
+                isRunning = true;
+                startTimeStr = getCurrentTimeStr();
+                timer = setInterval(updateTimer, 1000);
+                
+                startBtn.disabled = true;
+                stopBtn.disabled = false;
+                memoInput.disabled = true;
+                workModeBtn.disabled = true;
+                breakModeBtn.disabled = true;
+            }
+        }
+
+        function stopTimer() {
+            if (isRunning) {
+                clearInterval(timer);
+                isRunning = false;
+                const endTimeStr = getCurrentTimeStr();
+                saveLog(startTimeStr, endTimeStr, "中断", memoInput.value, currentMode);
+
+                startBtn.disabled = false;
+                stopBtn.disabled = true;
+                memoInput.disabled = false;
+                workModeBtn.disabled = false;
+                breakModeBtn.disabled = false;
+                memoInput.value = "";
+            }
+        }
+
+        function resetTimer() {
+            clearInterval(timer);
+            isRunning = false;
+            timeLeft = currentMode === 'work' ? 25 * 60 : 5 * 60;
+	    //timeLeft = 10;
+            display.textContent = formatTime(timeLeft);
+            
+            startBtn.disabled = false;
+            stopBtn.disabled = true;
+            memoInput.disabled = false;
+            workModeBtn.disabled = false;
+            breakModeBtn.disabled = false;
+        }
+
+        function saveLog(start, end, status, memo, mode) {
+            const newLog = { start, end, status, memo: memo || "（メモなし）", mode };
+
+            let logs = JSON.parse(localStorage.getItem('pomodoro_logs')) || [];
+            logs.unshift(newLog);
+
+            localStorage.setItem('pomodoro_logs', JSON.stringify(logs));
+            renderLogs(logs);
+        }
+
+        function renderLogs(logs) {
+            logList.innerHTML = "";
+            logs.forEach(log => {
+                const li = document.createElement('li');
+                
+                // 作業か休憩かによって色分けされたバッジを付けます
+                const isWork = log.mode === 'work' || !log.mode; // 過去の互換性用
+                const badgeClass = isWork ? 'badge-work' : 'badge-break';
+                const badgeText = isWork ? '作業' : '休憩';
+                
+                li.innerHTML = `<span class="badge ${badgeClass}">${badgeText}</span><strong>【${log.status}】</strong> ${log.start} 〜 ${log.end}`;
+                
+                if (log.memo) {
+                    const memoDiv = document.createElement('span');
+                    memoDiv.className = "memo-text";
+                    memoDiv.textContent = `📝 ${log.memo}`;
+                    li.appendChild(memoDiv);
+                }
+                
+                logList.appendChild(li);
+            });
+        }
+
+        function loadLogs() {
+            const logs = JSON.parse(localStorage.getItem('pomodoro_logs')) || [];
+            renderLogs(logs);
+        }
+
+        function clearAllLogs() {
+            if (confirm("これまでの頑張りの記録をすべて消去してもよろしいですか？")) {
+                localStorage.removeItem('pomodoro_logs');
+                renderLogs([]);
+            }
+        }
+    </script>
+</body>
+</html>
